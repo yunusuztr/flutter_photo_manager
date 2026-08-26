@@ -1366,6 +1366,29 @@ static NSString *PMResourceTypeName(PHAssetResourceType type) {
     NSString *id = [asset.localIdentifier stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
     NSString *modifiedDate = [NSString stringWithFormat:@"%f", asset.modificationDate.timeIntervalSince1970];
     NSString *filenameBase = [filename stringByDeletingPathExtension];
+
+    // The title (or the resource's original filename) is decorative in this
+    // name: `id` and `modifiedDate` already identify the asset and its current
+    // version, so sanitising or shortening this part cannot cause collisions.
+    //
+    // It has to be bounded, because it is not under the app's control. Assets
+    // imported from social apps carry their whole caption as the title, which
+    // pushes the path component past the 255-byte limit and makes the copy in
+    // `exportAssetToFile` fail with NSFileWriteInvalidFileNameError (514). A
+    // separator inside a title would also escape the cache directory.
+    filenameBase = [filenameBase stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    filenameBase = [filenameBase stringByReplacingOccurrencesOfString:@":" withString:@"_"];
+    // 40 characters stay within the limit even if every one of them is a
+    // 4-byte code point (160 bytes), leaving room for the identifier, the
+    // timestamp and the extension. Expanding the range to composed character
+    // sequences keeps the cut off a combining sequence.
+    static const NSUInteger kPMMaxOutputTitleChars = 40;
+    if (filenameBase.length > kPMMaxOutputTitleChars) {
+        NSRange safeRange = [filenameBase
+            rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, kPMMaxOutputTitleChars)];
+        filenameBase = [filenameBase substringWithRange:safeRange];
+    }
+
     filename = [NSString stringWithFormat:@"%@_%@%@_%@",
                 id, modifiedDate, isOrigin ? @"_o" : @"", filenameBase];
     if (![targetExtension isEmpty]) {
