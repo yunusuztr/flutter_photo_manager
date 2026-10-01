@@ -183,6 +183,22 @@ int main(int argc, const char *argv[]) {
         Copy(dir, source, "prefix + 20 grin + .mov.pmcache", [[prefix stringByAppendingString:Rep(grin, 20)] stringByAppendingString:@".mov.pmcache"]);
         Copy(dir, source, "prefix + 40 e-acute + .mov.pmcache", [[prefix stringByAppendingString:Rep(eAcute, 40)] stringByAppendingString:@".mov.pmcache"]);
 
+        printf("\n== pathExtension of names without a real extension ==\n");
+        NSArray<NSString *> *names = @[
+            @"IMG_0001.HEIC",
+            @"Great day. Loved every minute of it with friends at the beach #summer #fun",
+            [@"photo." stringByAppendingString:Rep(@"x", 120)],
+            [@"photo." stringByAppendingString:Rep(hangulSyllable, 120)],
+            @"trip.2024",
+        ];
+        for (NSString *name in names) {
+            NSString *extension = name.pathExtension;
+            NSString *appended = [@"base" stringByAppendingPathExtension:extension];
+            printf("[ext] name.len=%-4lu ext.len=%-4lu appended=%s ext=%s\n",
+                   (unsigned long)name.length, (unsigned long)extension.length,
+                   appended ? "ok" : "nil", extension.UTF8String);
+        }
+
         printf("\n== stored names (readdir) ==\n");
         DIR *d = opendir(dir.fileSystemRepresentation);
         struct dirent *entry;
