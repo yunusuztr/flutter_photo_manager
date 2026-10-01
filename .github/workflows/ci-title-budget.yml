@@ -1,0 +1,48 @@
+# Temporary workflow for the fork's ci/title-budget branch only.
+# It is NOT part of the upstream change (fluttercandies/flutter_photo_manager#1445).
+name: CI title budget (temporary, fork only)
+
+on:
+  push:
+    branches:
+      - ci/title-budget
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-title-budget
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Foundation probe (macOS + iOS simulator)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+          diskutil info / | grep -i "personality" || true
+      - name: Probe on macOS
+        run: |
+          xcrun clang -fobjc-arc -fmodules -Wall -o "$RUNNER_TEMP/probe-macos" .github/ci-title-budget/probe.m
+          "$RUNNER_TEMP/probe-macos"
+      - name: Probe on iOS simulator
+        run: |
+          set -euo pipefail
+          ARCH=$(uname -m)
+          SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          xcrun --sdk iphonesimulator clang -fobjc-arc -fmodules -Wall \
+            -target "$ARCH-apple-ios15.0-simulator" -isysroot "$SDK" \
+            -o "$RUNNER_TEMP/probe-ios" .github/ci-title-budget/probe.m
+          UDID=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl list devices available | grep "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl spawn "$UDID" "$RUNNER_TEMP/probe-ios"
