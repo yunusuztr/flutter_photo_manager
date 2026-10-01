@@ -1344,36 +1344,9 @@ static NSString *PMResourceTypeName(PHAssetResourceType type) {
 
     NSString *id = [asset.localIdentifier stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
     NSString *modifiedDate = [NSString stringWithFormat:@"%f", asset.modificationDate.timeIntervalSince1970];
-    NSString *filenameBase = [filename stringByDeletingPathExtension];
-
-    // The title/original filename is DECORATIVE here: `id` + `modifiedDate`
-    // already identify the asset and its current version uniquely, so shortening
-    // or sanitising this part cannot cause collisions.
-    //
-    // It must be bounded, because it is attacker-shaped data: assets imported
-    // from social apps carry the whole caption as their title. Measured on a
-    // real device (iOS 26, 2026-08-26): such videos produced a path component
-    // past the 255-byte limit and the copy in `exportAssetToFile` failed with
-    // NSCocoaErrorDomain 514 (NSFileWriteInvalidFileNameError). The user-visible
-    // result was "this video cannot be played" for files that play fine in
-    // Photos, and it hit `loadFile`, `originFile` and `getMediaUrl` alike since
-    // all of them route through this method.
-    //
-    // A separator inside the title would also escape the cache directory, so it
-    // is replaced rather than trusted.
-    filenameBase = [filenameBase stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
-    filenameBase = [filenameBase stringByReplacingOccurrencesOfString:@":" withString:@"_"];
-    // 40 characters is safe even if every one of them is a 4-byte code point:
-    // 160 bytes + the ~65-byte id/timestamp prefix + extension stays well under
-    // the 255-byte limit. `rangeOfComposedCharacterSequencesForRange:` keeps the
-    // cut off a combining sequence, so the name stays valid UTF-8.
-    static const NSUInteger kPMMaxTitleChars = 40;
-    if (filenameBase.length > kPMMaxTitleChars) {
-        NSRange safeRange = [filenameBase
-            rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, kPMMaxTitleChars)];
-        filenameBase = [filenameBase substringWithRange:safeRange];
-    }
-
+    // The title (or the resource's original filename) is not under the app's
+    // control, so it is sanitised and bounded before it becomes part of a path.
+    NSString *filenameBase = [PMFileHelper cacheFilenameTitleForTitle:[filename stringByDeletingPathExtension]];
     filename = [NSString stringWithFormat:@"%@_%@%@_%@",
                 id, modifiedDate, isOrigin ? @"_o" : @"", filenameBase];
     if (![targetExtension isEmpty]) {
