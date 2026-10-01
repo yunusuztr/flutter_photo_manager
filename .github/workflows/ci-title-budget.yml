@@ -44,6 +44,37 @@ jobs:
       - run: cd example; flutter build ios --no-codesign
       - run: cd example; flutter build macos --debug
 
+  # Extra evidence for this branch only: Flutter 3.47 enables Swift Package
+  # Manager by default, so both halves of test_darwin link the plugin as a Swift
+  # package. With SPM switched off, the plugin is built from its podspec.
+  test_darwin_cocoapods:
+    name: Darwin builds with CocoaPods only (SPM off)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: flutter-actions/setup-flutter@18c66a64fb6f6d3338c63cabbc5cd6da395e7f1d
+        with:
+          channel: 'stable'
+          cache: true
+      - run: flutter config --no-enable-swift-package-manager
+      - run: flutter doctor -v
+      - run: flutter pub get
+      - run: cd example; flutter build ios --no-codesign
+      - run: cd example; flutter build macos --debug
+      - name: Show that photo_manager was built from its podspec
+        run: |
+          grep -n "photo_manager" example/ios/Podfile.lock example/macos/Podfile.lock
+          ls example/ios/Pods/Target\ Support\ Files | grep -i photo_manager
+          ls example/macos/Pods/Target\ Support\ Files | grep -i photo_manager
+          grep -c "FlutterGeneratedPluginSwiftPackage" example/ios/Runner.xcodeproj/project.pbxproj example/macos/Runner.xcodeproj/project.pbxproj || true
+
   # Extra evidence for this branch only: the same XCTest bundle on iOS Foundation.
   unit_ios_simulator:
     name: Darwin unit tests on an iOS simulator
