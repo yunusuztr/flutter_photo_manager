@@ -51,8 +51,8 @@ static const NSUInteger PMMaxCacheFilenameTitleLength = 40;
     // its location is the cut: 0 when the first sequence alone is too long.
     // (`rangeOfComposedCharacterSequencesForRange:` would expand the range to
     // the end of that sequence instead, keeping an unbounded title.)
-    NSRange crossing = [result rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, PMMaxCacheFilenameTitleLength)];
-    return [result substringWithRange:crossing];
+    NSRange crossing = [result rangeOfComposedCharacterSequenceAtIndex:PMMaxCacheFilenameTitleLength];
+    return [result substringToIndex:crossing.location];
 }
 
 @end
