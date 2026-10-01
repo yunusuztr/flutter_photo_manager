@@ -38,7 +38,10 @@ static NSString *PMOversizedCombiningSequence(void) {
 /// end on one of its composed character sequence boundaries.
 - (void)assertTitle:(NSString *)result isBoundedPrefixOf:(NSString *)sanitised {
     XCTAssertLessThanOrEqual(result.length, kTitleBudget, @"%@", result);
-    XCTAssertTrue([sanitised hasPrefix:result], @"%@ is not a prefix of %@", result, sanitised);
+    // Not -hasPrefix:, which is NO for an empty prefix.
+    XCTAssertLessThanOrEqual(result.length, sanitised.length);
+    XCTAssertEqualObjects([sanitised substringToIndex:MIN(result.length, sanitised.length)], result,
+                          @"not a prefix of %@", sanitised);
     if (result.length < sanitised.length) {
         NSRange next = [sanitised rangeOfComposedCharacterSequenceAtIndex:result.length];
         XCTAssertEqual(next.location, result.length, @"the cut splits a composed character sequence");
