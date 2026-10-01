@@ -1,0 +1,126 @@
+# Temporary workflow for the fork's ci/swyra-title-budget branch only.
+# It checks swyra/safe-export-filename (3.12.0 with the export cache title fix)
+# and is not part of any upstream change. Flutter is pinned to the version the
+# app that uses this branch builds with.
+name: CI swyra title budget (temporary, fork only)
+
+on:
+  push:
+    branches:
+      - ci/swyra-title-budget
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-swyra-title-budget
+  cancel-in-progress: false
+
+jobs:
+  # The Darwin unit tests, then the steps of the `test_darwin` job of runnable.yml.
+  test_darwin:
+    name: Unit tests and Darwin builds (as in runnable.yml)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          persist-credentials: false
+      - name: Show the commit under test
+        run: git log -1 --format='%H %s'
+      - name: Run Darwin unit tests
+        run: sh .github/scripts/run_darwin_unit_tests.sh
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: flutter-actions/setup-flutter@18c66a64fb6f6d3338c63cabbc5cd6da395e7f1d
+        with:
+          channel: 'stable'
+          version: '3.47.5'
+          cache: true
+      - run: flutter doctor -v
+      - run: flutter pub get
+      - run: cd example; flutter build ios --no-codesign
+      - run: cd example; flutter build macos --debug
+      # With Swift Package Manager
+      - run: flutter config --enable-swift-package-manager
+      - run: flutter pub get
+      - run: cd example; flutter build ios --no-codesign
+      - run: cd example; flutter build macos --debug
+
+  # Flutter 3.47 enables Swift Package Manager by default, so both halves of
+  # test_darwin link the plugin as a Swift package. With SPM switched off, the
+  # plugin is built from its podspec.
+  test_darwin_cocoapods:
+    name: Darwin builds with CocoaPods only (SPM off)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: flutter-actions/setup-flutter@18c66a64fb6f6d3338c63cabbc5cd6da395e7f1d
+        with:
+          channel: 'stable'
+          version: '3.47.5'
+          cache: true
+      - run: flutter config --no-enable-swift-package-manager
+      - run: flutter doctor -v
+      - run: flutter pub get
+      - run: cd example; flutter build ios --no-codesign
+      - run: cd example; flutter build macos --debug
+      - name: Show that photo_manager was built from its podspec
+        run: |
+          grep -n "photo_manager" example/ios/Podfile.lock example/macos/Podfile.lock
+          ls example/ios/Pods/Target\ Support\ Files | grep -i photo_manager
+          ls example/macos/Pods/Target\ Support\ Files | grep -i photo_manager
+
+  # The same XCTest bundle on iOS Foundation.
+  unit_ios_simulator:
+    name: Darwin unit tests on an iOS simulator
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          persist-credentials: false
+      - name: Build the XCTest bundle for the simulator and run it with xctest
+        run: |
+          set -euo pipefail
+          platform=$(xcrun --sdk iphonesimulator --show-sdk-platform-path)
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          frameworks="$platform/Developer/Library/Frameworks"
+          sources=darwin/photo_manager/Sources/photo_manager/core
+          bundle="$RUNNER_TEMP/ios/photo_managerTests.xctest"
+          mkdir -p "$bundle"
+          cat > "$bundle/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>photo_managerTests</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.fluttercandies.photo-managerTests</string>
+            <key>CFBundlePackageType</key>
+            <string>BNDL</string>
+          </dict>
+          </plist>
+          PLIST
+          xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" -isysroot "$sdk" \
+            -fobjc-arc -fmodules -bundle -F "$frameworks" -framework XCTest \
+            -Xlinker -rpath -Xlinker "$frameworks" \
+            -I "$sources" "$sources/PMFileHelper.m" darwin/photo_manager/Tests/photo_managerTests/*.m \
+            -o "$bundle/photo_managerTests"
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl list devices available | grep "$udid"
+          xcrun simctl bootstatus "$udid" -b > /dev/null
+          SIMCTL_CHILD_DYLD_FRAMEWORK_PATH="$frameworks" \
+          SIMCTL_CHILD_DYLD_LIBRARY_PATH="$platform/Developer/usr/lib" \
+            xcrun simctl spawn "$udid" "$platform/Developer/Library/Xcode/Agents/xctest" "$bundle"
